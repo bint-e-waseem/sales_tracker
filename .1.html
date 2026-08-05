@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stockroom — Inventory &amp; Sales Tracker</title>
+
+<!-- Oswald: condensed display face for signage-style headers, price tags, section labels.
+     Inter: body/UI text. IBM Plex Mono: SKUs, prices, and the register-tape receipt feed. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+  /* ============================================================
+     DESIGN TOKENS
+     Concept: a stockroom shelf-and-ledger system. Light, paper-cool
+     backdrop; product cards read like shelf labels (barcode strip,
+     stock gauge); the sales sidebar reads like a printed register
+     tape. Blue = inventory/stock, orange = price/action, green/
+     amber/red reserved strictly for stock-level meaning.
+     ============================================================ */
+  :root{
+    --paper:        #F2F4F7;
+    --panel:        #FFFFFF;
+    --panel-soft:   #F8F9FB;
+    --line:         #E1E5EA;
+    --line-soft:    #EBEEF1;
+
+    --ink:          #16202B;
+    --ink-muted:    #5C6B7A;
+    --ink-faint:    #96A2AD;
+
+    --brand:        #2A47A8;
+    --brand-dim:    rgba(42,71,168,0.08);
+    --brand-strong: #1E357F;
+
+    --tag:          #E0632A;
+    --tag-dim:      rgba(224,99,42,0.10);
+    --tag-strong:   #C1511F;
+
+    --stock-ok:     #2E9E6B;
+    --stock-ok-dim: rgba(46,158,107,0.12);
+    --stock-low:    #D68A1B;
+    --stock-low-dim:rgba(214,138,27,0.13);
+    --stock-out:    #D64545;
+    --stock-out-dim:rgba(214,69,69,0.12);
+
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+
+    --font-display: 'Oswald', sans-serif;
+    --font-sans:    'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono:    'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+  }
+
+  *{ box-sizing:border-box; margin:0; padding:0; }
+
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--font-sans);
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  ::selection{ background:var(--brand-dim); color:var(--brand-strong); }
+  a{ color:inherit; }
+  button{ font-family:inherit; cursor:pointer; }
+  input, select{ font-family:inherit; }
+  :focus-visible{ outline:2px solid var(--brand); outline-offset:2px; border-radius:4px; }
+
+  .mono{ font-family:var(--font-mono); }
+  .display{ font-family:var(--font-display); text-transform:uppercase; letter-spacing:0.03em; }
+
+  /* ============================================================
+     SHELL
+     ============================================================ */
+  .app{
+    max-width:1440px; margin:0 auto;
+    padding:20px 24px 40px;
+    display:flex; flex-direction:column; gap:18px;
+  }
+
+  /* ---------------- HEADER ---------------- */
+  header.topbar{
+    display:flex; align-items:center; gap:18px; flex-wrap:wrap;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:var(--radius-lg);
+    padding:14px 18px;
+  }
+
+  .brand{ display:flex; align-items:center; gap:12px; flex-shrink:0; }
+  .brand-mark{
+    width:38px; height:38px; border-radius:8px;
+    background:var(--brand);
+    display:flex; align-items:center; justify-content:center; gap:2px;
+    padding:0 6px;
+  }
+  .brand-mark span{ display:block; width:2.5px; background:#fff; border-radius:1px; }
+  .brand-mark span:nth-child(1){ height:16px; }
+  .brand-mark span:nth-child(2){ height:22px; }
+  .brand-mark span:nth-child(3){ height:12px; }
+  .brand-mark span:nth-child(4){ height:20px; }
+  .brand-mark span:nth-child(5){ height:15px; }
+
+  .brand-text .title{ font-family:var(--font-display); font-weight:600; font-size:19px; letter-spacing:0.04em; }
+  .brand-text .subtitle{ font-size:11px; color:var(--ink-faint); letter-spacing:0.06em; text-transform:uppercase; }
+
+  .search-wrap{ position:relative; flex:1 1 240px; max-width:400px; }
+  .search-wrap input{
+    width:100%; background:var(--panel-soft); border:1px solid var(--line);
+    padding:9px 12px 9px 34px; border-radius:var(--radius-md); font-size:13.5px; color:var(--ink);
+  }
+  .search-wrap input::placeholder{ color:var(--ink-faint); }
+  .search-wrap svg{ position:absolute; left:11px; top:50%; transform:translateY(-50%); width:15px; height:15px; stroke:var(--ink-faint); }
+
+  .header-actions{ display:flex; gap:8px; margin-left:auto; }
+
+  .avatar{
+    width:36px; height:36px; border-radius:50%;
+    background:var(--tag); color:#fff;
+    display:flex; align-items:center; justify-content:center;
+    font-family:var(--font-display); font-weight:600; font-size:13px; flex-shrink:0;
+  }
+
+  /* ---------------- BUTTONS ---------------- */
+  .btn{
+    border:1px solid var(--line); background:var(--panel); color:var(--ink);
+    padding:8px 14px; border-radius:var(--radius-sm); font-size:13px; font-weight:600;
+    display:inline-flex; align-items:center; gap:6px; transition:background .15s, border-color .15s, transform .05s;
+    white-space:nowrap;
+  }
+  .btn:hover{ background:var(--panel-soft); border-color:#CBD2D9; }
+  .btn:active{ transform:translateY(1px); }
+  .btn-brand{ background:var(--brand); border-color:var(--brand); color:#fff; }
+  .btn-brand:hover{ background:var(--brand-strong); border-color:var(--brand-strong); }
+  .btn-tag{ background:var(--tag); border-color:var(--tag); color:#fff; }
+  .btn-tag:hover{ background:var(--tag-strong); border-color:var(--tag-strong); }
+  .btn-ghost{ background:transparent; }
+  .btn-danger{ background:transparent; color:var(--stock-out); }
+  .btn-danger:hover{ background:var(--stock-out-dim); border-color:var(--stock-out); }
+  .btn-sm{ padding:5px 10px; font-size:12px; }
+  .btn-icon{ padding:7px; }
+  .btn:disabled{ opacity:.45; cursor:not-allowed; }
+
+  /* ---------------- STAT STRIP (price-tag cards) ---------------- */
+  .stat-strip{
+    display:grid; grid-template-columns:repeat(4, 1fr); gap:12px;
+  }
+  .stat-tag{
+    position:relative;
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius-md);
+    padding:14px 16px 14px 20px;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  .stat-tag::before{
+    content:""; position:absolute; left:0; top:0; bottom:0; width:4px;
+    border-radius:var(--radius-md) 0 0 var(--radius-md);
+    background:var(--brand);
+  }
+  .stat-tag.tag-alert::before{ background:var(--stock-low); }
+  .stat-tag.tag-sales::before{ background:var(--stock-ok); }
+  .stat-tag .lbl{ font-size:11px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:0.06em; }
+  .stat-tag .val{ font-family:var(--font-mono); font-size:22px; font-weight:600; }
+  .stat-tag .sub{ font-size:11.5px; color:var(--ink-muted); }
+
+  /* ---------------- LAYOUT ---------------- */
+  .layout{ display:grid; grid-template-columns:1fr 320px; gap:18px; align-items:start; }
+
+  /* ---------------- TOOLBAR ---------------- */
+  .panel{ background:var(--panel); border:1px solid var(--line); border-radius:var(--radius-lg); padding:18px; }
+
+  .toolbar{
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px;
+  }
+  .chip-row{ display:flex; gap:6px; flex-wrap:wrap; }
+  .chip{
+    border:1px solid var(--line); background:var(--panel-soft); color:var(--ink-muted);
+    padding:6px 12px; border-radius:20px; font-size:12px; font-weight:600;
+  }
+  .chip.active{ background:var(--brand); border-color:var(--brand); color:#fff; }
+
+  .toolbar-right{ display:flex; align-items:center; gap:10px; margin-left:auto; }
+  .switch-label{ display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--ink-muted); }
+  .switch{
+    width:34px; height:19px; border-radius:20px; background:var(--line); position:relative; border:none; flex-shrink:0;
+  }
+  .switch::after{
+    content:""; position:absolute; top:2px; left:2px; width:15px; height:15px; border-radius:50%;
+    background:#fff; transition:transform .15s;
+  }
+  .switch.on{ background:var(--stock-low); }
+  .switch.on::after{ transform:translateX(15px); }
+
+  /* ---------------- PRODUCT GRID (shelf cards) ---------------- */
+  .product-grid{
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:14px;
+  }
+  .grid-empty{
+    grid-column:1/-1; text-align:center; padding:50px 20px; color:var(--ink-faint);
+  }
+
+  .product-card{
+    border:1px solid var(--line); border-radius:var(--radius-md); overflow:hidden;
+    background:var(--panel); display:flex; flex-direction:column;
+  }
+
+  /* signature element: barcode strip standing in for a shelf-edge label */
+  .barcode{
+    height:20px; display:flex; align-items:stretch; gap:2px; padding:5px 10px; background:var(--ink);
+  }
+  .barcode span{ background:#fff; flex-shrink:0; }
+
+  .product-body{ padding:12px 14px 14px; display:flex; flex-direction:column; gap:8px; flex:1; }
+  .product-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+  .product-sku{ font-family:var(--font-mono); font-size:10.5px; color:var(--ink-faint); }
+  .product-name{ font-weight:700; font-size:14.5px; line-height:1.25; }
+  .product-cat{
+    align-self:flex-start; font-size:10.5px; font-weight:600; color:var(--brand);
+    background:var(--brand-dim); padding:2px 8px; border-radius:20px; text-transform:uppercase; letter-spacing:0.03em;
+  }
+  .product-price{ font-family:var(--font-mono); font-size:19px; font-weight:600; color:var(--tag-strong); }
+
+  .stock-row{ display:flex; align-items:center; gap:8px; }
+  .stock-gauge{ flex:1; height:6px; border-radius:4px; background:var(--line-soft); overflow:hidden; }
+  .stock-gauge > i{ display:block; height:100%; border-radius:4px; }
+  .stock-count{ font-family:var(--font-mono); font-size:11.5px; color:var(--ink-muted); flex-shrink:0; }
+  .stock-tag{
+    font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em;
+    padding:2px 7px; border-radius:20px; flex-shrink:0;
+  }
+  .stock-tag.ok{ color:var(--stock-ok); background:var(--stock-ok-dim); }
+  .stock-tag.low{ color:var(--stock-low); background:var(--stock-low-dim); }
+  .stock-tag.out{ color:var(--stock-out); background:var(--stock-out-dim); }
+
+  .product-desc{ font-size:12px; color:var(--ink-muted); line-height:1.4; }
+
+  .product-actions{ display:flex; align-items:center; gap:6px; margin-top:auto; padding-top:6px; }
+  .stepper{ display:flex; align-items:center; border:1px solid var(--line); border-radius:var(--radius-sm); overflow:hidden; }
+  .stepper button{
+    width:26px; height:26px; background:var(--panel-soft); border:none; color:var(--ink);
+    font-size:14px; display:flex; align-items:center; justify-content:center;
+  }
+  .stepper button:hover{ background:var(--line-soft); }
+  .product-actions .btn{ flex:1; justify-content:center; }
+
+  /* ---------------- SIDEBAR ---------------- */
+  .sidebar{ display:flex; flex-direction:column; gap:14px; }
+
+  .section-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .section-head h2{ font-family:var(--font-display); font-size:13px; letter-spacing:0.06em; color:var(--ink-muted); }
+
+  /* register tape */
+  .tape-panel{ padding:0; overflow:hidden; }
+  .tape-head{ padding:14px 16px 10px; border-bottom:1px dashed var(--line); }
+  .tape-body{
+    max-height:340px; overflow-y:auto; padding:12px 16px 16px;
+    display:flex; flex-direction:column-reverse; gap:12px;
+    background:
+      repeating-linear-gradient(var(--panel-soft) 0 1px, transparent 1px 100%);
+  }
+  .tape-body::-webkit-scrollbar{ width:6px; }
+  .tape-body::-webkit-scrollbar-thumb{ background:var(--line); border-radius:4px; }
+
+  .tape-empty{ text-align:center; color:var(--ink-faint); font-size:12.5px; padding:20px 0; }
+
+  .receipt{
+    font-family:var(--font-mono); font-size:11.5px; line-height:1.55;
+    border-bottom:1px dashed var(--line-soft); padding-bottom:10px;
+  }
+  .receipt .row{ display:flex; justify-content:space-between; gap:8px; }
+  .receipt .txn{ color:var(--ink-faint); }
+  .receipt .name{ color:var(--ink); font-weight:600; }
+  .receipt .total{ color:var(--tag-strong); font-weight:600; }
+  .receipt .meta{ color:var(--ink-faint); font-size:10.5px; margin-top:2px; }
+
+  /* categories list */
+  .cat-list{ display:flex; flex-direction:column; gap:2px; }
+  .cat-row{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    padding:8px 6px; border-radius:var(--radius-sm); font-size:13px; cursor:pointer;
+    border:1px solid transparent;
+  }
+  .cat-row:hover{ background:var(--panel-soft); }
+  .cat-row.active{ background:var(--brand-dim); border-color:rgba(42,71,168,0.25); }
+  .cat-row .count{ font-family:var(--font-mono); font-size:11px; color:var(--ink-faint); }
+
+  /* low stock alerts */
+  .alert-list{ display:flex; flex-direction:column; gap:6px; }
+  .alert-row{
+    display:flex; justify-content:space-between; align-items:center; gap:8px;
+    font-size:12.5px; padding:8px 10px; border-radius:var(--radius-sm);
+    background:var(--stock-low-dim); color:var(--stock-low);
+  }
+  .alert-row .n{ font-family:var(--font-mono); font-weight:600; }
+  .alert-empty{ font-size:12.5px; color:var(--ink-faint); padding:6px 2px; }
+
+  .io-row{ display:flex; gap:8px; }
+  .io-row .btn{ flex:1; justify-content:center; }
+
+  /* ---------------- MODALS ---------------- */
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(15,20,26,0.45);
+    display:flex; align-items:center; justify-content:center; padding:20px; z-index:60;
+  }
+  .modal-overlay[hidden]{ display:none; }
+  .modal{
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--radius-lg);
+    padding:22px; width:100%; max-width:420px; max-height:88vh; overflow-y:auto;
+  }
+  .modal h3{ font-family:var(--font-display); font-size:16px; letter-spacing:0.02em; margin-bottom:16px; }
+  .field{ margin-bottom:13px; }
+  .field label{ display:block; font-size:11px; color:var(--ink-muted); margin-bottom:5px; text-transform:uppercase; letter-spacing:0.04em; }
+  .field input, .field select, .field textarea{
+    width:100%; background:var(--panel-soft); border:1px solid var(--line); color:var(--ink);
+    padding:9px 11px; border-radius:var(--radius-sm); font-size:13.5px;
+  }
+  .field textarea{ resize:vertical; min-height:54px; font-family:inherit; }
+  .field-row{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .field-error{ color:var(--stock-out); font-size:11px; margin-top:4px; display:none; }
+  .field-error.show{ display:block; }
+  .field-hint{ font-size:11px; color:var(--ink-faint); margin-top:4px; }
+  .modal-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
+  .modal-sub{ font-size:12.5px; color:var(--ink-muted); margin-bottom:16px; }
+
+  .visually-hidden{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+
+  /* ---------------- RESPONSIVE ---------------- */
+  @media (max-width: 980px){
+    .layout{ grid-template-columns:1fr; }
+    .stat-strip{ grid-template-columns:repeat(2, 1fr); }
+  }
+  @media (max-width: 560px){
+    .stat-strip{ grid-template-columns:1fr 1fr; }
+    .field-row{ grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ============ HEADER ============ -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+      <div class="brand-text">
+        <div class="title">Stockroom</div>
+        <div class="subtitle">Inventory &amp; sales tracker</div>
+      </div>
+    </div>
+
+    <div class="search-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="searchInput" type="text" placeholder="Search name, SKU, or description…" aria-label="Search products">
+    </div>
+
+    <div class="header-actions">
+      <button class="btn btn-brand" id="openAddProduct">+ Product</button>
+      <div class="avatar" title="Store manager">SM</div>
+    </div>
+  </header>
+
+  <!-- ============ STAT STRIP ============ -->
+  <section class="stat-strip" aria-label="Inventory summary">
+    <div class="stat-tag">
+      <span class="lbl">Products</span>
+      <span class="val mono" id="statProducts">0</span>
+      <span class="sub" id="statCategories">0 categories</span>
+    </div>
+    <div class="stat-tag">
+      <span class="lbl">Inventory value</span>
+      <span class="val mono" id="statValue">$0.00</span>
+      <span class="sub" id="statUnits">0 units on shelf</span>
+    </div>
+    <div class="stat-tag tag-alert">
+      <span class="lbl">Low stock</span>
+      <span class="val mono" id="statLow">0</span>
+      <span class="sub">at or below threshold</span>
+    </div>
+    <div class="stat-tag tag-sales">
+      <span class="lbl">Sales today</span>
+      <span class="val mono" id="statSalesToday">$0.00</span>
+      <span class="sub" id="statTxnToday">0 transactions</span>
+    </div>
+  </section>
+
+  <!-- ============ MAIN LAYOUT ============ -->
+  <div class="layout">
+
+    <!-- ---------- MAIN: PRODUCT GRID ---------- -->
+    <main class="panel">
+      <div class="toolbar">
+        <div class="chip-row" id="categoryChips"></div>
+        <div class="toolbar-right">
+          <label class="switch-label">
+            <button type="button" class="switch" id="lowStockSwitch" role="switch" aria-checked="false" aria-label="Show low stock only"></button>
+            Low stock only
+          </label>
+          <input type="number" id="thresholdInput" value="5" min="0" style="width:56px; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--panel-soft); font-size:12.5px;" title="Low-stock threshold" aria-label="Low stock threshold">
+        </div>
+      </div>
+
+      <div class="product-grid" id="productGrid"></div>
+    </main>
+
+    <!-- ---------- SIDEBAR ---------- -->
+    <aside class="sidebar">
+
+      <!-- Signature element: register-tape sales feed -->
+      <section class="panel tape-panel">
+        <div class="tape-head">
+          <div class="section-head" style="margin-bottom:2px;">
+            <h2>Register tape</h2>
+            <button class="btn btn-ghost btn-sm" id="quickSellBtn">+ Sale</button>
+          </div>
+          <span style="font-size:11px; color:var(--ink-faint);">Most recent first</span>
+        </div>
+        <div class="tape-body" id="registerTape"></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head"><h2>Categories</h2></div>
+        <div class="cat-list" id="categoryList"></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head"><h2>Low stock alerts</h2></div>
+        <div class="alert-list" id="alertList"></div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head"><h2>Data</h2></div>
+        <div class="io-row">
+          <button class="btn btn-ghost btn-sm" id="exportBtn">Export JSON</button>
+          <button class="btn btn-ghost btn-sm" id="importBtn">Import JSON</button>
+          <input type="file" id="importFile" accept="application/json" class="visually-hidden">
+        </div>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<!-- ============ ADD PRODUCT MODAL ============ -->
+<div class="modal-overlay" id="addProductModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="addProductTitle">
+    <h3 id="addProductTitle">Add product</h3>
+    <form id="addProductForm" novalidate>
+      <div class="field">
+        <label for="fSku">SKU / Product ID</label>
+        <input type="text" id="fSku" placeholder="e.g. P006" autocomplete="off">
+        <div class="field-error" id="skuError">Enter a unique SKU.</div>
+      </div>
+      <div class="field">
+        <label for="fName">Product name</label>
+        <input type="text" id="fName" placeholder="e.g. Wireless Mouse" autocomplete="off">
+        <div class="field-error" id="nameError">Name can't be empty.</div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="fCategory">Category</label>
+          <input type="text" id="fCategory" placeholder="e.g. Electronics" autocomplete="off" list="categoryOptions">
+          <datalist id="categoryOptions"></datalist>
+          <div class="field-error" id="categoryError">Category can't be empty.</div>
+        </div>
+        <div class="field">
+          <label for="fPrice">Price ($)</label>
+          <input type="number" id="fPrice" min="0" step="0.01" placeholder="0.00">
+          <div class="field-error" id="priceError">Enter a valid price.</div>
+        </div>
+      </div>
+      <div class="field">
+        <label for="fStock">Initial stock</label>
+        <input type="number" id="fStock" min="0" step="1" placeholder="0">
+        <div class="field-error" id="stockError">Enter a valid stock quantity.</div>
+      </div>
+      <div class="field">
+        <label for="fDesc">Description (optional)</label>
+        <textarea id="fDesc" placeholder="Short product description…"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancelAddProduct">Cancel</button>
+        <button type="submit" class="btn btn-brand">Add product</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ SELL MODAL ============ -->
+<div class="modal-overlay" id="sellModal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="sellTitle">
+    <h3 id="sellTitle">Record a sale</h3>
+    <div class="modal-sub" id="sellSub"></div>
+    <form id="sellForm" novalidate>
+      <div class="field" id="sellProductField">
+        <label for="sellProduct">Product</label>
+        <select id="sellProduct"></select>
+      </div>
+      <div class="field">
+        <label for="sellQty">Quantity</label>
+        <input type="number" id="sellQty" min="1" step="1" value="1">
+        <div class="field-error" id="qtyError">Quantity must be at least 1 and within stock.</div>
+      </div>
+      <div class="field">
+        <label for="sellEmail">Customer email (optional)</label>
+        <input type="email" id="sellEmail" placeholder="customer@email.com">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="cancelSell">Cancel</button>
+        <button type="submit" class="btn btn-tag">Record sale</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ============================================================
+     STATE
+     Kept in memory only — no browser storage — so Export/Import
+     JSON is the direct stand-in for the original export_data()
+     and import_data() file operations.
+     ============================================================ */
+  let products = [
+    { id:"P001", name:"Smartphone X", category:"Electronics", price:699.99, stock:50, description:"Latest flagship smartphone", createdAt:new Date().toISOString() },
+    { id:"P002", name:"Laptop Pro", category:"Electronics", price:1299.99, stock:30, description:"Professional laptop for developers", createdAt:new Date().toISOString() },
+    { id:"P003", name:"Running Shoes", category:"Sports", price:89.99, stock:6, description:"Comfortable running shoes", createdAt:new Date().toISOString() },
+    { id:"P004", name:"Coffee Maker", category:"Home", price:49.99, stock:4, description:"Automatic coffee maker", createdAt:new Date().toISOString() },
+    { id:"P005", name:"Python Guide (Book)", category:"Books", price:39.99, stock:0, description:"Complete Python programming guide", createdAt:new Date().toISOString() },
+  ];
+
+  let transactions = [];
+  let txnCounter = 0;
+
+  let activeCategory = "All";
+  let searchQuery = "";
+  let lowStockOnly = false;
+  let lowStockThreshold = 5;
+
+  const nextTxnId = () => "TXN-" + String(++txnCounter).padStart(4, "0");
+
+  /* ============================================================
+     DOM REFS
+     ============================================================ */
+  const productGrid      = document.getElementById("productGrid");
+  const categoryChips    = document.getElementById("categoryChips");
+  const categoryList     = document.getElementById("categoryList");
+  const alertList        = document.getElementById("alertList");
+  const registerTape     = document.getElementById("registerTape");
+  const categoryOptions  = document.getElementById("categoryOptions");
+
+  const statProducts   = document.getElementById("statProducts");
+  const statCategories = document.getElementById("statCategories");
+  const statValue      = document.getElementById("statValue");
+  const statUnits      = document.getElementById("statUnits");
+  const statLow        = document.getElementById("statLow");
+  const statSalesToday = document.getElementById("statSalesToday");
+  const statTxnToday   = document.getElementById("statTxnToday");
+
+  const searchInput      = document.getElementById("searchInput");
+  const lowStockSwitch   = document.getElementById("lowStockSwitch");
+  const thresholdInput   = document.getElementById("thresholdInput");
+
+  /* Add product modal */
+  const addProductModal = document.getElementById("addProductModal");
+  const addProductForm  = document.getElementById("addProductForm");
+  const fSku = document.getElementById("fSku"), fName = document.getElementById("fName"),
+        fCategory = document.getElementById("fCategory"), fPrice = document.getElementById("fPrice"),
+        fStock = document.getElementById("fStock"), fDesc = document.getElementById("fDesc");
+  const skuError = document.getElementById("skuError"), nameError = document.getElementById("nameError"),
+        categoryError = document.getElementById("categoryError"), priceError = document.getElementById("priceError"),
+        stockError = document.getElementById("stockError");
+
+  /* Sell modal */
+  const sellModal   = document.getElementById("sellModal");
+  const sellForm    = document.getElementById("sellForm");
+  const sellSub     = document.getElementById("sellSub");
+  const sellProduct = document.getElementById("sellProduct");
+  const sellQty     = document.getElementById("sellQty");
+  const sellEmail   = document.getElementById("sellEmail");
+  const qtyError    = document.getElementById("qtyError");
+
+  /* ============================================================
+     HELPERS
+     ============================================================ */
+  function escapeHtml(str){
+    return String(str).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+  }
+  const fmtMoney = (n) => "$" + n.toFixed(2);
+  const findProduct = (id) => products.find(p => p.id === id) || null;
+
+  function stockStatus(p){
+    if (p.stock <= 0) return "out";
+    if (p.stock <= lowStockThreshold) return "low";
+    return "ok";
+  }
+
+  function getCategories(){
+    return Array.from(new Set(products.map(p => p.category))).sort();
+  }
+
+  /* Decorative barcode strip — purely generative bar widths, not a real symbology */
+  function barcodeBars(seedStr){
+    let seed = 0;
+    for (const ch of seedStr) seed = (seed * 31 + ch.charCodeAt(0)) % 997;
+    let bars = "";
+    for (let i = 0; i < 22; i++){
+      seed = (seed * 13 + 7) % 997;
+      const w = 1 + (seed % 3);
+      bars += `<span style="width:${w}px;"></span>`;
+    }
+    return bars;
+  }
+
+  /* ============================================================
+     RENDER: STATS
+     ============================================================ */
+  function renderStats(){
+    const cats = getCategories();
+    const totalUnits = products.reduce((s,p) => s + p.stock, 0);
+    const totalValue = products.reduce((s,p) => s + p.stock * p.price, 0);
+    const lowCount = products.filter(p => p.stock <= lowStockThreshold).length;
+
+    const today = new Date().toISOString().slice(0,10);
+    const todays = transactions.filter(t => t.timestamp.startsWith(today));
+    const todaysTotal = todays.reduce((s,t) => s + t.total, 0);
+
+    statProducts.textContent = products.length;
+    statCategories.textContent = `${cats.length} categor${cats.length === 1 ? "y" : "ies"}`;
+    statValue.textContent = fmtMoney(totalValue);
+    statUnits.textContent = `${totalUnits} units on shelf`;
+    statLow.textContent = lowCount;
+    statSalesToday.textContent = fmtMoney(todaysTotal);
+    statTxnToday.textContent = `${todays.length} transaction${todays.length === 1 ? "" : "s"}`;
+  }
+
+  /* ============================================================
+     RENDER: CATEGORY CHIPS + LIST
+     ============================================================ */
+  function renderCategories(){
+    const cats = getCategories();
+
+    categoryChips.innerHTML = ["All", ...cats].map(c => `
+      <button class="chip ${activeCategory === c ? "active" : ""}" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</button>
+    `).join("");
+    categoryChips.querySelectorAll(".chip").forEach(el => {
+      el.addEventListener("click", () => { activeCategory = el.dataset.cat; renderAll(); });
+    });
+
+    categoryList.innerHTML = cats.length === 0
+      ? `<div class="alert-empty">No categories yet.</div>`
+      : cats.map(c => {
+          const count = products.filter(p => p.category === c).length;
+          return `<div class="cat-row ${activeCategory === c ? "active" : ""}" data-cat="${escapeHtml(c)}">
+            <span>${escapeHtml(c)}</span><span class="count mono">${count}</span>
+          </div>`;
+        }).join("");
+    categoryList.querySelectorAll(".cat-row").forEach(el => {
+      el.addEventListener("click", () => { activeCategory = el.dataset.cat; renderAll(); });
+    });
+
+    categoryOptions.innerHTML = cats.map(c => `<option value="${escapeHtml(c)}"></option>`).join("");
+  }
+
+  /* ============================================================
+     RENDER: LOW STOCK ALERTS
+     ============================================================ */
+  function renderAlerts(){
+    const low = products.filter(p => p.stock <= lowStockThreshold).sort((a,b) => a.stock - b.stock);
+    alertList.innerHTML = low.length === 0
+      ? `<div class="alert-empty">All products are above threshold.</div>`
+      : low.map(p => `
+          <div class="alert-row">
+            <span>${escapeHtml(p.name)}</span>
+            <span class="n">${p.stock} left</span>
+          </div>
+        `).join("");
+  }
+
+  /* ============================================================
+     RENDER: PRODUCT GRID
+     ============================================================ */
+  function renderGrid(){
+    const q = searchQuery.trim().toLowerCase();
+
+    let list = products.filter(p => {
+      const matchesCat = activeCategory === "All" || p.category === activeCategory;
+      const matchesSearch = !q ||
+        p.name.toLowerCase().includes(q) ||
+        p.id.toLowerCase().includes(q) ||
+        p.description.toLowerCase().includes(q);
+      const matchesLow = !lowStockOnly || p.stock <= lowStockThreshold;
+      return matchesCat && matchesSearch && matchesLow;
+    });
+
+    if (list.length === 0){
+      productGrid.innerHTML = `<div class="grid-empty">No products match the current filters.</div>`;
+      return;
+    }
+
+    productGrid.innerHTML = list.map(p => {
+      const status = stockStatus(p);
+      const gaugePct = Math.max(4, Math.min(100, (p.stock / Math.max(lowStockThreshold * 3, 10)) * 100));
+      const gaugeColor = status === "ok" ? "var(--stock-ok)" : status === "low" ? "var(--stock-low)" : "var(--stock-out)";
+      const statusLabel = status === "ok" ? "In stock" : status === "low" ? "Low" : "Out";
+
+      return `
+        <div class="product-card" data-id="${p.id}">
+          <div class="barcode" aria-hidden="true">${barcodeBars(p.id)}</div>
+          <div class="product-body">
+            <div class="product-top">
+              <div>
+                <div class="product-sku mono">${escapeHtml(p.id)}</div>
+                <div class="product-name">${escapeHtml(p.name)}</div>
+              </div>
+              <div class="product-price">${fmtMoney(p.price)}</div>
+            </div>
+            <span class="product-cat">${escapeHtml(p.category)}</span>
+            ${p.description ? `<div class="product-desc">${escapeHtml(p.description)}</div>` : ""}
+            <div class="stock-row">
+              <div class="stock-gauge"><i style="width:${gaugePct}%; background:${gaugeColor};"></i></div>
+              <span class="stock-count mono">${p.stock}</span>
+              <span class="stock-tag ${status}">${statusLabel}</span>
+            </div>
+            <div class="product-actions">
+              <div class="stepper">
+                <button type="button" data-action="dec" aria-label="Decrease stock">−</button>
+                <button type="button" data-action="inc" aria-label="Increase stock">+</button>
+              </div>
+              <button type="button" class="btn btn-tag btn-sm" data-action="sell" ${p.stock === 0 ? "disabled" : ""}>Sell</button>
+              <button type="button" class="btn btn-danger btn-sm btn-icon" data-action="delete" aria-label="Delete product">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    productGrid.querySelectorAll(".product-card").forEach(card => {
+      const id = card.dataset.id;
+      card.querySelector("[data-action='dec']").addEventListener("click", () => restock(id, -1));
+      card.querySelector("[data-action='inc']").addEventListener("click", () => restock(id, 1));
+      card.querySelector("[data-action='sell']").addEventListener("click", () => openSellModal(id));
+      card.querySelector("[data-action='delete']").addEventListener("click", () => deleteProduct(id));
+    });
+  }
+
+  /* ============================================================
+     RENDER: REGISTER TAPE (transactions)
+     ============================================================ */
+  function renderTape(){
+    if (transactions.length === 0){
+      registerTape.innerHTML = `<div class="tape-empty">No sales recorded yet.</div>`;
+      return;
+    }
+    registerTape.innerHTML = transactions.map(t => {
+      const time = new Date(t.timestamp).toLocaleString([], { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" });
+      return `
+        <div class="receipt">
+          <div class="row"><span class="txn">${t.id}</span><span class="txn">${time}</span></div>
+          <div class="row"><span class="name">${escapeHtml(t.productName)} ×${t.qty}</span><span class="total">${fmtMoney(t.total)}</span></div>
+          ${t.customerEmail ? `<div class="meta">${escapeHtml(t.customerEmail)}</div>` : ""}
+        </div>
+      `;
+    }).join("");
+  }
+
+  function renderAll(){
+    renderStats();
+    renderCategories();
+    renderAlerts();
+    renderGrid();
+    renderTape();
+  }
+
+  /* ============================================================
+     ACTIONS — Products
+     ============================================================ */
+  function addProduct({ id, name, category, price, stock, description }){
+    products.push({ id, name, category, price, stock, description, createdAt:new Date().toISOString() });
+    renderAll();
+  }
+
+  function restock(id, delta){
+    const p = findProduct(id);
+    if (!p) return;
+    const next = p.stock + delta;
+    if (next < 0) return;
+    p.stock = next;
+    renderAll();
+  }
+
+  function deleteProduct(id){
+    const p = findProduct(id);
+    if (!p) return;
+    if (!confirm(`Delete "${p.name}" from inventory?`)) return;
+    products = products.filter(prod => prod.id !== id);
+    renderAll();
+  }
+
+  /* ============================================================
+     ACTIONS — Sales
+     ============================================================ */
+  function recordSale(productId, qty, email){
+    const p = findProduct(productId);
+    if (!p) return false;
+    if (qty < 1 || qty > p.stock) return false;
+
+    p.stock -= qty;
+    transactions.unshift({
+      id: nextTxnId(),
+      productId: p.id,
+      productName: p.name,
+      qty,
+      unitPrice: p.price,
+      total: p.price * qty,
+      timestamp: new Date().toISOString(),
+      customerEmail: email || ""
+    });
+    renderAll();
+    return true;
+  }
+
+  /* ============================================================
+     ADD PRODUCT MODAL
+     ============================================================ */
+  document.getElementById("openAddProduct").addEventListener("click", () => {
+    addProductForm.reset();
+    [skuError, nameError, categoryError, priceError, stockError].forEach(e => e.classList.remove("show"));
+    addProductModal.hidden = false;
+    fSku.focus();
+  });
+  document.getElementById("cancelAddProduct").addEventListener("click", () => addProductModal.hidden = true);
+  addProductModal.addEventListener("click", (e) => { if (e.target === addProductModal) addProductModal.hidden = true; });
+
+  addProductForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const id = fSku.value.trim();
+    const name = fName.value.trim();
+    const category = fCategory.value.trim();
+    const price = parseFloat(fPrice.value);
+    const stock = parseInt(fStock.value, 10);
+    const description = fDesc.value.trim();
+
+    const showErr = (el, on) => el.classList.toggle("show", on);
+    showErr(skuError, !id || !!findProduct(id));
+    showErr(nameError, !name);
+    showErr(categoryError, !category);
+    showErr(priceError, isNaN(price) || price < 0);
+    showErr(stockError, isNaN(stock) || stock < 0);
+
+    if (!id || findProduct(id) || !name || !category || isNaN(price) || price < 0 || isNaN(stock) || stock < 0){
+      return;
+    }
+
+    addProduct({ id, name, category, price, stock, description });
+    addProductModal.hidden = true;
+  });
+
+  /* ============================================================
+     SELL MODAL
+     ============================================================ */
+  function populateSellSelect(preselectId){
+    const inStock = products.filter(p => p.stock > 0);
+    sellProduct.innerHTML = inStock.map(p =>
+      `<option value="${p.id}" ${p.id === preselectId ? "selected" : ""}>${escapeHtml(p.name)} — ${p.stock} in stock</option>`
+    ).join("");
+  }
+
+  function openSellModal(productId){
+    qtyError.classList.remove("show");
+    sellForm.reset();
+    sellQty.value = 1;
+
+    if (products.filter(p => p.stock > 0).length === 0){
+      sellSub.textContent = "No products currently have stock available.";
+      sellProduct.innerHTML = "";
+      document.getElementById("sellProductField").style.display = "none";
+      sellForm.querySelector("button[type=submit]").disabled = true;
+    } else {
+      document.getElementById("sellProductField").style.display = "";
+      sellForm.querySelector("button[type=submit]").disabled = false;
+      sellSub.textContent = productId
+        ? `Selling ${findProduct(productId)?.name || "product"}.`
+        : "Choose a product and quantity to record a sale.";
+      populateSellSelect(productId);
+      const p = findProduct(sellProduct.value);
+      if (p) sellQty.max = p.stock;
+    }
+    sellModal.hidden = false;
+  }
+
+  document.getElementById("quickSellBtn").addEventListener("click", () => openSellModal(null));
+  document.getElementById("cancelSell").addEventListener("click", () => sellModal.hidden = true);
+  sellModal.addEventListener("click", (e) => { if (e.target === sellModal) sellModal.hidden = true; });
+
+  sellProduct.addEventListener("change", () => {
+    const p = findProduct(sellProduct.value);
+    if (p) sellQty.max = p.stock;
+  });
+
+  sellForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const productId = sellProduct.value;
+    const qty = parseInt(sellQty.value, 10);
+    const email = sellEmail.value.trim();
+    const p = findProduct(productId);
+
+    const invalid = !p || isNaN(qty) || qty < 1 || qty > p.stock;
+    qtyError.classList.toggle("show", invalid);
+    if (invalid) return;
+
+    recordSale(productId, qty, email);
+    sellModal.hidden = true;
+  });
+
+  /* ============================================================
+     TOOLBAR: search / low-stock toggle / threshold
+     ============================================================ */
+  searchInput.addEventListener("input", (e) => { searchQuery = e.target.value; renderGrid(); });
+
+  lowStockSwitch.addEventListener("click", () => {
+    lowStockOnly = !lowStockOnly;
+    lowStockSwitch.classList.toggle("on", lowStockOnly);
+    lowStockSwitch.setAttribute("aria-checked", String(lowStockOnly));
+    renderGrid();
+  });
+
+  thresholdInput.addEventListener("input", () => {
+    const v = parseInt(thresholdInput.value, 10);
+    lowStockThreshold = isNaN(v) || v < 0 ? 0 : v;
+    renderAll();
+  });
+
+  /* ============================================================
+     EXPORT / IMPORT (stand-in for export_data / import_data)
+     ============================================================ */
+  document.getElementById("exportBtn").addEventListener("click", () => {
+    const data = { products, transactions, exportDate: new Date().toISOString() };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "inventory_data.json";
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  const importFile = document.getElementById("importFile");
+  document.getElementById("importBtn").addEventListener("click", () => importFile.click());
+  importFile.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try{
+        const data = JSON.parse(reader.result);
+        if (!Array.isArray(data.products)) throw new Error("Invalid file shape");
+        products = data.products;
+        transactions = Array.isArray(data.transactions) ? data.transactions : [];
+        txnCounter = transactions.length;
+        renderAll();
+      } catch(err){
+        alert("That file doesn't look like a valid Stockroom export.");
+      }
+    };
+    reader.readAsText(file);
+    importFile.value = "";
+  });
+
+  /* ============================================================
+     INIT — seed a couple of sample sales so the tape isn't empty
+     ============================================================ */
+  recordSale("P001", 2, "customer1@email.com");
+  recordSale("P003", 1, "customer2@email.com");
+  renderAll();
+})();
+</script>
+</body>
+</html>
