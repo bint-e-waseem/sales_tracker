@@ -277,18 +277,7 @@ For support, please:
 - Contact the maintainer via email
 - Check the documentation for common issues
 
-## 🔮 Future Roadmap
 
-- [ ] GUI interface using Tkinter or PyQt
-- [ ] Database integration (SQLite/PostgreSQL)
-- [ ] REST API for web integration
-- [ ] Barcode scanning support
-- [ ] Advanced analytics dashboard
-- [ ] Multi-store support
-- [ ] Email notifications for low stock
-- [ ] PDF report generation
-
----
 
 **Built with ❤️ using Python**
 
